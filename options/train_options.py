@@ -17,11 +17,11 @@ class TrainOptions(BaseOptions):
 
 
         # 学习率参数和训练次数参数
-        parser.add_argument('--niter', type=int, default=100, help='# of iter at starting learning rate')
-        parser.add_argument('--niter_decay', type=int, default=100,
+        parser.add_argument('--niter', type=int, default=10, help='# of iter at starting learning rate')
+        parser.add_argument('--niter_decay', type=int, default=90,
                             help='# of iter to linearly decay learning rate to zero')
         parser.add_argument('--beta1', type=float, default=0.5, help='momentum term of adam')
-        parser.add_argument('--lr', type=float, default=0.0002, help='initial learning rate for adam')
+        parser.add_argument('--lr', type=float, default=0.0001, help='initial learning rate for adam')
         parser.add_argument('--lr_seg', type=float, default=0.0002, help='initial learning rate for adam')
         parser.add_argument('--lr_policy', type=str, default='linear',
                             help='learning rate policy. [linear | step | plateau | cosine]')

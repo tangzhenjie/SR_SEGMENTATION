@@ -10,7 +10,7 @@ import cv2
 if __name__ == '__main__':
     # 加载设置
     opt = TestOptions().parse()
-
+    opt.upscale_factor = 4
     # 加载数据集
     dataset = create_dataset(opt)
     dataset_size = len(dataset)
@@ -21,6 +21,7 @@ if __name__ == '__main__':
 
     # 恢复权重
     model.setup(opt)
+    model.eval()
     output_dir = "./datasets/mass_transfored/fakeB"
     for i, data in enumerate(dataset):
         image_name_A = data["A_paths"][0].split("/")[-1]
@@ -31,8 +32,8 @@ if __name__ == '__main__':
         model.set_input(data)
         model.forward()
         # result data(image label)
-        fake_B = model.fake_B
-        imageB_np = util.tensor2im(fake_B)
+        fake_B = model.sr_img
+        imageB_np = util.tensor2im_sr(fake_B)
         label_data = np.squeeze(data["B"].numpy())
 
         # result_paths(image, label)

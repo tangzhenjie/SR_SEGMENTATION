@@ -7,12 +7,12 @@ import torch
 import random
 import numpy as np
 def transform(image, mask, opt):
-    if not opt.no_crop:
-        # Random crop
-        i, j, h, w = transforms.RandomCrop.get_params(
-            image, output_size=(opt.A_crop_size, opt.A_crop_size))
-        image = TF.crop(image, i, j, h, w)
-        mask = TF.crop(mask, i, j, h, w)
+    #if not opt.no_crop:
+    #    # Random crop
+    #    i, j, h, w = transforms.RandomCrop.get_params(
+    #        image, output_size=(opt.A_crop_size, opt.A_crop_size))
+    #    image = TF.crop(image, i, j, h, w)
+    #    mask = TF.crop(mask, i, j, h, w)
 
     # Random horizontal flipping
     if random.random() > 0.5:
@@ -33,7 +33,7 @@ def transform(image, mask, opt):
     #        image = interfunction_image(image)
     if opt.inter_method_label != "":
         if opt.inter_method_label == "nearest":
-            mask = mask.resize((opt.B_crop_size, opt.B_crop_size))
+           mask = mask.resize((opt.B_crop_size, opt.B_crop_size))
     mask = np.array(mask).astype(np.long)
     #nomal_fun_image = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
     # Transform to tensor
@@ -66,8 +66,10 @@ class ConvertDataset(BaseDataset):
         return parser
     def __init__(self, opt):
         BaseDataset.__init__(self, opt)
-        self.dir_A = opt.dataroot + "/" + opt.phase + 'A/images'  # create a path '/trainA/images/*.png'
-        self.dir_B = opt.dataroot + "/" + opt.phase + 'A/labels'
+        #self.dir_A = opt.dataroot + "/" + opt.phase + 'A/images'  # create a path '/trainA/images/*.png'
+        #self.dir_B = opt.dataroot + "/" + opt.phase + 'A/labels'
+        self.dir_A = opt.dataroot + "/" + 'fakeB_middle_step/images'  # create a path '/trainA/images/*.png'
+        self.dir_B = opt.dataroot + "/" + 'fakeB_middle_step/labels'
         self.A_paths = sorted(make_dataset(self.dir_A, opt.max_dataset_size)) # load images from '/trainA/images/*.tif'
         self.B_paths = sorted(make_dataset(self.dir_B, opt.max_dataset_size))
         self.A_size = len(self.A_paths)
