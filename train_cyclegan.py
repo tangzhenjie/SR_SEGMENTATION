@@ -15,6 +15,7 @@ if __name__ == '__main__':
 
     # 创建模型
     model = create_model(opt)
+    model.train()
 
     # 设置学习率，和恢复权重
     model.setup(opt)

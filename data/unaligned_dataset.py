@@ -14,9 +14,9 @@ def get_transformA(opt, convert=True):
     if not opt.no_flip:
         transform_list.append(transforms.RandomHorizontalFlip())
     # Interpolation A to B size
-    if opt.inter_method != "":
-        if opt.inter_method == "bilinear":
-            transform_list += [transforms.Resize(opt.B_crop_size)]
+    #if opt.inter_method != "":
+    #    if opt.inter_method == "bilinear":
+    #        transform_list += [transforms.Resize(opt.B_crop_size)]
     if convert:
         transform_list += [transforms.ToTensor()]
         transform_list += [transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
@@ -28,6 +28,9 @@ def get_transformB(opt, convert=True):
 
     if not opt.no_crop:
         transform_list.append(transforms.RandomCrop(opt.B_crop_size))
+
+    transform_list += [transforms.Resize(opt.A_crop_size, interpolation=m.BICUBIC)]
+
     if convert:
         transform_list += [transforms.ToTensor()]
         transform_list += [transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
@@ -48,7 +51,7 @@ class UnalignedDataset(BaseDataset):
         :param is_train: -- whether training phase or test phase. You can use this flag to add training-specific or test-specific options.
         :return: the modified parser.
         """
-        parser.add_argument('--A_crop_size', type=int, default=72, help='crop to this size')
+        parser.add_argument('--A_crop_size', type=int, default=60, help='crop to this size')
         parser.add_argument('--B_crop_size', type=int, default=240, help='crop to this size')
         parser.add_argument('--inter_method', type=str, default='bilinear', help='the Interpolation method')
         parser.add_argument('--no_crop',  type=bool, default=False,

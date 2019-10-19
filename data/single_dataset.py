@@ -30,9 +30,9 @@ class SingleDataset(BaseDataset):
         parser.add_argument('--phase', type=str, default='train', help='train, val, test, etc  for the directory name')
         parser.add_argument('--max_dataset_size', type=int, default=float("inf"),
                             help='Maximum number of samples allowed per dataset. If the dataset directory contains more than max_dataset_size, only a subset is loaded.')
-        parser.add_argument('--is_B', type=bool, default=False,
+        parser.add_argument('--is_B', type=bool, default=True,
                             help='when opt.phase==train it determines whether or not to use trainB')
-        parser.add_argument('--is_fakeB', type=bool, default=True,
+        parser.add_argument('--is_fakeB', type=bool, default=False,
                             help='when opt.phase==train it determines whether or not to use the transfored fakeB')
         return parser
     def __init__(self, opt):

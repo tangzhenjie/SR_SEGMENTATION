@@ -14,21 +14,21 @@ class BaseOptions():
         # basic parameters
         parser.add_argument('--dataroot', default='./datasets/mass_transfored',
                             help='path to images (should have subfolders trainA, trainB, valB, etc)')
-        parser.add_argument('--name', type=str, default='resfcn50C_srgan',
+        parser.add_argument('--name', type=str, default='cycle_gan',
                             help='name of the experiment. It decides where to store samples and models')
-        parser.add_argument('--gpu_ids', type=str, default='0', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
+        parser.add_argument('--gpu_ids', type=str, default='1', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
         parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints', help='models are saved here')
 
         # model parameters
-        parser.add_argument('--model', type=str, default='resfcn50',
+        parser.add_argument('--model', type=str, default='cycle_gan',
                             help='chooses which model to use. [cycle_gan | resfcn50 | SISR | test]')
         # dataset parameters
-        parser.add_argument('--dataset_mode', type=str, default='single',
+        parser.add_argument('--dataset_mode', type=str, default='unaligned',
                             help='chooses how datasets are loaded. [unaligned | convert | single | endtoend | srgan]')
         parser.add_argument('--serial_batches', type=bool, default=False,
                             help='if true, takes images in order to make batches, otherwise takes them randomly')
         parser.add_argument('--num_threads', default=4, type=int, help='# threads for loading data')
-        parser.add_argument('--batch_size', type=int, default=10, help='input batch size')
+        parser.add_argument('--batch_size', type=int, default=20, help='input batch size')
 
         # additional parameters
         parser.add_argument('--no_html', type=bool, default=False,
