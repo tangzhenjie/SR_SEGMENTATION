@@ -6,6 +6,9 @@ import math
 from torch.optim import lr_scheduler
 import torch.utils.model_zoo as model_zoo
 from torch.hub import load_state_dict_from_url
+import torch.nn.functional as F
+from torchvision.models.vgg import vgg16
+
 model_urls = {
     'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
     'resnet34': 'https://download.pytorch.org/models/resnet34-333f7ec4.pth',
@@ -886,6 +889,21 @@ class Regularization(torch.nn.Module):
 # srgan model
 #############################################################################
 
+def Srgan_Generator(upscale_factor=1, gpu_ids=[]):
+    model = Srgan_G(upscale_factor) # out [0, 1]
+    if len(gpu_ids) > 0:
+        assert(torch.cuda.is_available())
+        model.to(gpu_ids[0])
+        model = torch.nn.DataParallel(model, gpu_ids)  # multi-GPUs
+    return model
+def Srgan_Discriminator(gpu_ids=[]):
+    model = Srgan_D()
+    if len(gpu_ids) > 0:
+        assert(torch.cuda.is_available())
+        model.to(gpu_ids[0])
+        model = torch.nn.DataParallel(model, gpu_ids)  # multi-GPUs
+    return model
+
 class Srgan_G(nn.Module):
     def __init__(self, scale_factor):
         upsample_block_num = int(math.log(scale_factor, 2))
@@ -919,8 +937,6 @@ class Srgan_G(nn.Module):
         block8 = self.block8(block1 + block7)
 
         return (F.tanh(block8) + 1) / 2
-
-
 class Srgan_D(nn.Module):
     def __init__(self):
         super(Srgan_D, self).__init__()
@@ -965,8 +981,6 @@ class Srgan_D(nn.Module):
     def forward(self, x):
         batch_size = x.size(0)
         return F.sigmoid(self.net(x).view(batch_size))
-
-
 class ResidualBlock(nn.Module):
     def __init__(self, channels):
         super(ResidualBlock, self).__init__()
@@ -984,8 +998,6 @@ class ResidualBlock(nn.Module):
         residual = self.bn2(residual)
 
         return x + residual
-
-
 class UpsampleBLock(nn.Module):
     def __init__(self, in_channels, up_scale):
         super(UpsampleBLock, self).__init__()
@@ -998,4 +1010,52 @@ class UpsampleBLock(nn.Module):
         x = self.pixel_shuffle(x)
         x = self.prelu(x)
         return x
+
+def Srgan_Gloss(gpu_ids=[]):
+    model = GeneratorLoss()
+    if len(gpu_ids) > 0:
+        assert(torch.cuda.is_available())
+        model.to(gpu_ids[0])
+        model = torch.nn.DataParallel(model, gpu_ids)  # multi-GPUs
+    return model
+
+class GeneratorLoss(nn.Module):
+    def __init__(self):
+        super(GeneratorLoss, self).__init__()
+        vgg = vgg16(pretrained=True)
+        loss_network = nn.Sequential(*list(vgg.features)[:31]).eval()
+        for param in loss_network.parameters():
+            param.requires_grad = False
+        self.loss_network = loss_network
+        self.mse_loss = nn.MSELoss()
+        self.tv_loss = TVLoss()
+
+    def forward(self, out_labels, out_images, target_images):
+        # Adversarial Loss
+        adversarial_loss = torch.mean(1 - out_labels)
+        # Perception Loss
+        perception_loss = self.mse_loss(self.loss_network(out_images), self.loss_network(target_images))
+        # Image Loss
+        image_loss = self.mse_loss(out_images, target_images)
+        # TV Loss
+        tv_loss = self.tv_loss(out_images)
+        return image_loss + 0.001 * adversarial_loss + 0.006 * perception_loss + 2e-8 * tv_loss
+class TVLoss(nn.Module):
+    def __init__(self, tv_loss_weight=1):
+        super(TVLoss, self).__init__()
+        self.tv_loss_weight = tv_loss_weight
+
+    def forward(self, x):
+        batch_size = x.size()[0]
+        h_x = x.size()[2]
+        w_x = x.size()[3]
+        count_h = self.tensor_size(x[:, :, 1:, :])
+        count_w = self.tensor_size(x[:, :, :, 1:])
+        h_tv = torch.pow((x[:, :, 1:, :] - x[:, :, :h_x - 1, :]), 2).sum()
+        w_tv = torch.pow((x[:, :, :, 1:] - x[:, :, :, :w_x - 1]), 2).sum()
+        return self.tv_loss_weight * 2 * (h_tv / count_h + w_tv / count_w) / batch_size
+
+    @staticmethod
+    def tensor_size(t):
+        return t.size()[1] * t.size()[2] * t.size()[3]
 

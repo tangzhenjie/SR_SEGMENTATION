@@ -64,6 +64,28 @@ def save_segment_result(visuals, epoch, win_size, img_dir, web_dir, name):
         webpage.add_images(ims, txts, links, width=win_size)
     webpage.save()
 
+def save_sr_result(visuals, epoch, win_size, img_dir, web_dir, name):
+    # save images to the disk
+    for label, image in visuals.items():
+        image_numpy = util.tensor2im_sr(image)
+        img_path = os.path.join(img_dir, 'epoch%.3d_%s.png' % (epoch, label))
+        util.save_image(image_numpy, img_path)
+
+    # update website
+    webpage = html.HTML(web_dir, 'Experiment name = %s' % name, refresh=1)
+    for n in range(epoch, 0, -1):
+        webpage.add_header('epoch [%d]' % n)
+        ims, txts, links = [], [], []
+
+        for label, image_numpy in visuals.items():
+            image_numpy = util.tensor2im_sr(image)
+            img_path = 'epoch%.3d_%s.png' % (n, label)
+            ims.append(img_path)
+            txts.append(label)
+            links.append(img_path)
+        webpage.add_images(ims, txts, links, width=win_size)
+    webpage.save()
+
 
 class Visualizer():
     """This class includes several functions that can display/save images and print/save logging information.
@@ -148,6 +170,35 @@ class Visualizer():
 
                 for label, image_numpy in visuals.items():
                     image_numpy = util.tensor2im_segment(image)
+                    img_path = 'epoch%.3d_%s.png' % (n, label)
+                    ims.append(img_path)
+                    txts.append(label)
+                    links.append(img_path)
+                webpage.add_images(ims, txts, links, width=self.win_size)
+            webpage.save()
+
+    def display_current_results_sr(self, visuals, epoch):
+        """save current results to an HTML file.
+
+        Parameters:
+            visuals (OrderedDict) - - dictionary of images to display or save
+            epoch (int) - - the current epoch
+        """
+        if self.use_html:  # save images to an HTML file if they haven't been saved.
+            # save images to the disk
+            for label, image in visuals.items():
+                image_numpy = util.tensor2im_sr(image)
+                img_path = os.path.join(self.img_dir, 'epoch%.3d_%s.png' % (epoch, label))
+                util.save_image(image_numpy, img_path)
+
+            # update website
+            webpage = html.HTML(self.web_dir, 'Experiment name = %s' % self.name, refresh=1)
+            for n in range(epoch, 0, -1):
+                webpage.add_header('epoch [%d]' % n)
+                ims, txts, links = [], [], []
+
+                for label, image_numpy in visuals.items():
+                    image_numpy = util.tensor2im_sr(image)
                     img_path = 'epoch%.3d_%s.png' % (n, label)
                     ims.append(img_path)
                     txts.append(label)

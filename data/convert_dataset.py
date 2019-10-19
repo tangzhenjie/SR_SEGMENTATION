@@ -27,18 +27,18 @@ def transform(image, mask, opt):
 
 
     # 插值
-    if opt.inter_method_image != "":
-        if opt.inter_method_image == "bilinear":
-            interfunction_image = transforms.Resize(opt.B_crop_size)
-            image = interfunction_image(image)
+    #if opt.inter_method_image != "":
+    #    if opt.inter_method_image == "bilinear":
+    #        interfunction_image = transforms.Resize(opt.B_crop_size)
+    #        image = interfunction_image(image)
     if opt.inter_method_label != "":
         if opt.inter_method_label == "nearest":
             mask = mask.resize((opt.B_crop_size, opt.B_crop_size))
     mask = np.array(mask).astype(np.long)
-    nomal_fun_image = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+    #nomal_fun_image = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
     # Transform to tensor
     image = TF.to_tensor(image)
-    image = nomal_fun_image(image)
+    #image = nomal_fun_image(image)
     mask = TF.to_tensor(mask)
     return image, mask
 
@@ -54,7 +54,7 @@ class ConvertDataset(BaseDataset):
         :param is_train: -- whether training phase or test phase. You can use this flag to add training-specific or test-specific options.
         :return: the modified parser.
         """
-        parser.add_argument('--A_crop_size', type=int, default=72, help='A crop to this size')
+        parser.add_argument('--A_crop_size', type=int, default=60, help='A crop to this size')
         parser.add_argument('--B_crop_size', type=int, default=240, help='B crop to this size')
         parser.add_argument('--no_crop', type=bool, default=False,
                             help='crop the A and B according to the special datasets params  [crop | none],')

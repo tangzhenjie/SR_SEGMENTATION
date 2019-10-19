@@ -8,7 +8,7 @@ class TrainOptions(BaseOptions):
                             help='which epoch to load? set to latest to use latest cached model')
 
         # 显示和保存设置参数
-        parser.add_argument('--display_freq', type=int, default=50,
+        parser.add_argument('--display_freq', type=int, default=80,
                             help='frequency of showing training results on screen')
         parser.add_argument('--print_freq', type=int, default=40,
                             help='frequency of showing training results on console')
