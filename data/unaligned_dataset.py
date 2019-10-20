@@ -19,7 +19,7 @@ def get_transformA(opt, convert=True):
     #        transform_list += [transforms.Resize(opt.B_crop_size)]
     if convert:
         transform_list += [transforms.ToTensor()]
-        transform_list += [transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+        #transform_list += [transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
     return transforms.Compose(transform_list)
 
 
@@ -29,11 +29,11 @@ def get_transformB(opt, convert=True):
     if not opt.no_crop:
         transform_list.append(transforms.RandomCrop(opt.B_crop_size))
 
-    transform_list += [transforms.Resize(opt.A_crop_size, interpolation=m.BICUBIC)]
+    #transform_list += [transforms.Resize(opt.A_crop_size, interpolation=m.BICUBIC)]
 
     if convert:
         transform_list += [transforms.ToTensor()]
-        transform_list += [transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+        #transform_list += [transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
     return transforms.Compose(transform_list)
 class UnalignedDataset(BaseDataset):
     """

@@ -1059,3 +1059,65 @@ class TVLoss(nn.Module):
     def tensor_size(t):
         return t.size()[1] * t.size()[2] * t.size()[3]
 
+#############################################################################
+# SrCycleGAN model
+#############################################################################
+
+def srcycle_GA(upscale_factor=4, gpu_ids=[]):
+    """
+    我们先使用srgan的生成器模型，后期换成遥感方向的。注意：因为该生成器既作为域转换，又作为超分辨。所以需要特殊设计
+    :param upscale_factor:
+    :param gpu_ids:
+    :return:
+    """
+    model = Srgan_G(upscale_factor)  # out [0, 1]
+    if len(gpu_ids) > 0:
+        assert (torch.cuda.is_available())
+        model.to(gpu_ids[0])
+        model = torch.nn.DataParallel(model, gpu_ids)  # multi-GPUs
+    return model
+def srcycle_GB(upscale_factor=4, gpu_ids=[]):
+    """
+    我们为了简单起见先使用超分辨的逆过程最符合现实的降级模型（先卷积后下采样），域转换后期再特殊设计
+    :param upscale_factor:
+    :param gpu_ids:
+    :return:
+    """
+    model = Srcycle_GB(upscale_factor)  # out [0, 1]
+    if len(gpu_ids) > 0:
+        assert (torch.cuda.is_available())
+        model.to(gpu_ids[0])
+        model = torch.nn.DataParallel(model, gpu_ids)  # multi-GPUs
+    return model
+
+class Srcycle_GB(nn.Module):
+    def __init__(self, downscale_factor=4):
+        #upsample_block_num = int(math.log(downscale_factor, 2))
+        super(Srcycle_GB, self).__init__()
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(in_channels=3, out_channels=64, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU()
+        )
+
+        self.pool1 = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(in_channels=64, out_channels=128, kernel_size=5, stride=1, padding=2),
+            nn.BatchNorm2d(128),
+            nn.ReLU()
+        )
+        self.pool2 = nn.MaxPool2d(2, 2)
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(in_channels=128, out_channels=64, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(64)
+        )
+        self.conv4 = nn.Conv2d(64, 3, kernel_size=1)
+    def forward(self, x):
+        conv1 = self.conv1(x)
+        pool1 = self.pool1(conv1)
+        conv2 = self.conv2(pool1)
+        pool2 = self.pool2(conv2)
+        conv3 = self.conv3(pool2)
+        conv4 = self.conv4(conv3)
+        return (F.tanh(conv4) + 1) / 2   #[0, 1]
+

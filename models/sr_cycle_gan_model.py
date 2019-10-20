@@ -63,7 +63,7 @@ class SrCycleGANModel(BaseModel):
         if is_train:
             parser.add_argument('--lambda_A', type=float, default=10.0, help='weight for cycle loss (A -> B -> A)')
             parser.add_argument('--lambda_B', type=float, default=10.0, help='weight for cycle loss (B -> A -> B)')
-            parser.add_argument('--lambda_identity', type=float, default=0.5, help='use identity mapping. Setting lambda_identity other than 0 has an effect of scaling the weight of the identity mapping loss. For example, if the weight of the identity loss should be 10 times smaller than the weight of the reconstruction loss, please set lambda_identity = 0.1')
+            parser.add_argument('--lambda_identity', type=float, default=-1, help='use identity mapping. Setting lambda_identity other than 0 has an effect of scaling the weight of the identity mapping loss. For example, if the weight of the identity loss should be 10 times smaller than the weight of the reconstruction loss, please set lambda_identity = 0.1')
 
         return parser
 
@@ -75,13 +75,14 @@ class SrCycleGANModel(BaseModel):
         """
         BaseModel.__init__(self, opt)
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
-        self.loss_names = ['D_A', 'G_A', 'cycle_A', 'idt_A', 'D_B', 'G_B', 'cycle_B', 'idt_B']
+        self.loss_names = ['D_A', 'G_A', 'cycle_A', 'D_B', 'G_B', 'cycle_B']
         # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
         visual_names_A = ['real_A', 'fake_B', 'rec_A']
         visual_names_B = ['real_B', 'fake_A', 'rec_B']
         if self.isTrain and self.opt.lambda_identity > 0.0:  # if identity loss is used, we also visualize idt_B=G_A(B) ad idt_A=G_A(B)
             visual_names_A.append('idt_B')
             visual_names_B.append('idt_A')
+            self.loss_names += ['idt_A', 'idt_B']
 
         self.visual_names = visual_names_A + visual_names_B  # combine visualizations for A and B
         # specify the models you want to save to the disk. The training/test scripts will call <BaseModel.save_networks> and <BaseModel.load_networks>.
@@ -94,13 +95,10 @@ class SrCycleGANModel(BaseModel):
         # The naming is different from those used in the paper.
         # Code (vs. paper): G_A (G), G_B (F), D_A (D_Y), D_B (D_X)
         if self.isTrain:
-            self.netG_A = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm,
-                                            not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
-            self.netG_B = networks.define_G(opt.output_nc, opt.input_nc, opt.ngf, opt.netG, opt.norm,
-                                            not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
+            self.netG_A = networks.srcycle_GA(upscale_factor=4, gpu_ids=self.gpu_ids)
+            self.netG_B = networks.srcycle_GB(upscale_factor=4, gpu_ids=self.gpu_ids)
         else:
-            self.netG_A = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm,
-                                            not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
+            self.netG_A = networks.srcycle_GA(upscale_factor=4, gpu_ids=self.gpu_ids)
 
 
         if self.isTrain:  # define discriminators
@@ -131,18 +129,18 @@ class SrCycleGANModel(BaseModel):
             input (dict): include the data itself and its metadata information.
         """
         if self.isTrain:
-            self.real_A = input['A'].to(self.device)
-            self.real_B = input['B'].to(self.device)
+            self.real_A = input['A'].to(self.device) # [60, 60]
+            self.real_B = input['B'].to(self.device) # [240, 240]
             self.image_paths = input['A_paths']
         else:
-            self.real_A = input['A'].to(self.device)
+            self.real_A = input['A'].to(self.device) # [60, 60]
             self.image_paths = input['A_paths']
 
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
         if self.isTrain:
-            self.fake_B = self.netG_A(self.real_A)  # G_A(A)
-            self.rec_A = self.netG_B(self.fake_B)  # G_B(G_A(A))
+            self.fake_B = self.netG_A(self.real_A)  # G_A(A)  [0, 1]
+            self.rec_A = self.netG_B(self.fake_B)  # G_B(G_A(A)) [0, 1]
             self.fake_A = self.netG_B(self.real_B)  # G_B(B)
             self.rec_B = self.netG_A(self.fake_A)  # G_A(G_B(B))
         else:
@@ -162,10 +160,10 @@ class SrCycleGANModel(BaseModel):
         """
         # Real
         pred_real = netD(real)
-        loss_D_real = self.criterionGAN(pred_real, True)
+        loss_D_real = self.criterionGAN(pred_real, True)  # 让真实的接近1
         # Fake
         pred_fake = netD(fake.detach())
-        loss_D_fake = self.criterionGAN(pred_fake, False)
+        loss_D_fake = self.criterionGAN(pred_fake, False) # 让生成的接近0
         # Combined loss and calculate gradients
         loss_D = (loss_D_real + loss_D_fake) * 0.5
         loss_D.backward()
@@ -199,9 +197,9 @@ class SrCycleGANModel(BaseModel):
             self.loss_idt_B = 0
 
         # GAN loss D_A(G_A(A))
-        self.loss_G_A = self.criterionGAN(self.netD_A(self.fake_B), True)
+        self.loss_G_A = self.criterionGAN(self.netD_A(self.fake_B), True) # 使D出来的值接近1
         # GAN loss D_B(G_B(B))
-        self.loss_G_B = self.criterionGAN(self.netD_B(self.fake_A), True)
+        self.loss_G_B = self.criterionGAN(self.netD_B(self.fake_A), True) # 使D出来的值接近1
         # Forward cycle loss || G_B(G_A(A)) - A||
         self.loss_cycle_A = self.criterionCycle(self.rec_A, self.real_A) * lambda_A
         # Backward cycle loss || G_A(G_B(B)) - B||
