@@ -13,7 +13,7 @@ class TestOptions(BaseOptions):
 
         # Dropout and Batchnorm has different behavioir during training and test.
         parser.add_argument('--eval', action='store_true', help='use eval mode during test time.')
-        parser.add_argument('--epoch', type=str, default='100',
+        parser.add_argument('--epoch', type=str, default='200',
                             help='which epoch to load? set to latest to use latest cached model')
         self.isTrain = False
         return parser

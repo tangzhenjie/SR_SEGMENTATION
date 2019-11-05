@@ -32,7 +32,7 @@ if __name__ == '__main__':
         model.set_input(data)
         model.forward()
         # result data(image label)
-        fake_B = model.sr_img
+        fake_B = model.fake_B
         imageB_np = util.tensor2im_sr(fake_B)
         label_data = np.squeeze(data["B"].numpy())
 
