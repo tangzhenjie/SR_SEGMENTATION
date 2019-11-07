@@ -8,6 +8,7 @@ import torch.utils.model_zoo as model_zoo
 from torch.hub import load_state_dict_from_url
 import torch.nn.functional as F
 from torchvision.models.vgg import vgg16
+import torchvision.models as models
 
 model_urls = {
     'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
@@ -1125,3 +1126,171 @@ class Srcycle_GB(nn.Module):
 #############################################################################
 # srda model
 #############################################################################
+def feature_encoder(is_restore_from_imagenet=True, resnet_weight_path="./resnetweight/", gpu_ids=[]):
+    model = resnet50_encoder(Bottleneck, [3, 4, 6, 3])
+    if len(gpu_ids) > 0:
+        assert (torch.cuda.is_available())
+        model.to(gpu_ids[0])
+        model = torch.nn.DataParallel(model, gpu_ids)  # multi-GPUs
+    if is_restore_from_imagenet:
+        print("loading pretrained model (resnet50)")
+        state_dict = load_state_dict_from_url(model_urls['resnet50'], model_dir=resnet_weight_path)
+        model.load_state_dict(state_dict, strict=False)
+    return model
+
+def classifier_segment(num_classes=2, gpu_ids=[]):
+    model = classifier(num_classes)
+    if len(gpu_ids) > 0:
+        assert (torch.cuda.is_available())
+        model.to(gpu_ids[0])
+        model = torch.nn.DataParallel(model, gpu_ids)  # multi-GPUs
+    return model
+
+def da_decoder(gpu_ids=[]):
+    model = dadecoder()
+    if len(gpu_ids) > 0:
+        assert (torch.cuda.is_available())
+        model.to(gpu_ids[0])
+        model = torch.nn.DataParallel(model, gpu_ids)  # multi-GPUs
+    return model
+
+class resnet50_encoder(nn.Module):
+    def __init__(self, block, layers, zero_init_residual=False,
+                 groups=1, width_per_group=64, replace_stride_with_dilation=None,
+                 norm_layer=None):
+        super(resnet50_encoder, self).__init__()
+        if norm_layer is None:
+            norm_layer = nn.BatchNorm2d
+        self._norm_layer = norm_layer
+
+        self.inplanes = 64
+        self.dilation = 1
+        if replace_stride_with_dilation is None:
+            # each element in the tuple indicates if we should replace
+            # the 2x2 stride with a dilated convolution instead
+            replace_stride_with_dilation = [False, False, False]
+        if len(replace_stride_with_dilation) != 3:
+            raise ValueError("replace_stride_with_dilation should be None "
+                             "or a 3-element tuple, got {}".format(replace_stride_with_dilation))
+        self.groups = groups
+        self.base_width = width_per_group
+        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
+                               bias=False)
+        self.bn1 = norm_layer(self.inplanes)
+        self.relu = nn.ReLU(inplace=True)
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        self.layer1 = self._make_layer(block, 64, layers[0])
+        self.layer2 = self._make_layer(block, 128, layers[1], stride=2,
+                                       dilate=replace_stride_with_dilation[0])
+        self.layer3 = self._make_layer(block, 256, layers[2], stride=1,
+                                       dilate=replace_stride_with_dilation[1])
+        self.layer4 = self._make_layer(block, 512, layers[3], stride=1,
+                                       dilate=replace_stride_with_dilation[2])
+        #self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        #self.output = conv1x1(512 * block.expansion, num_classes)
+        #self.fc = nn.Linear(512 * block.expansion, num_classes)
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
+        # Zero-initialize the last BN in each residual branch,
+        # so that the residual branch starts with zeros, and each residual block behaves like an identity.
+        # This improves the model by 0.2~0.3% according to https://arxiv.org/abs/1706.02677
+        if zero_init_residual:
+            for m in self.modules():
+                if isinstance(m, Bottleneck):
+                    nn.init.constant_(m.bn3.weight, 0)
+                elif isinstance(m, BasicBlock):
+                    nn.init.constant_(m.bn2.weight, 0)
+
+    def _make_layer(self, block, planes, blocks, stride=1, dilate=False):
+        norm_layer = self._norm_layer
+        downsample = None
+        previous_dilation = self.dilation
+        if dilate:
+            self.dilation *= stride
+            stride = 1
+        if stride != 1 or self.inplanes != planes * block.expansion:
+            downsample = nn.Sequential(
+                conv1x1(self.inplanes, planes * block.expansion, stride),
+                norm_layer(planes * block.expansion),
+            )
+
+        layers = []
+        layers.append(block(self.inplanes, planes, stride, downsample, self.groups,
+                            self.base_width, previous_dilation, norm_layer))
+        self.inplanes = planes * block.expansion
+        for _ in range(1, blocks):
+            layers.append(block(self.inplanes, planes, groups=self.groups,
+                                base_width=self.base_width, dilation=self.dilation,
+                                norm_layer=norm_layer))
+
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
+
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+        #x = self.output(x)
+        #x = nn.functional.interpolate(x, scale_factor=8, mode='bilinear')
+        return x   # 下采样8倍
+
+class classifier(nn.Module):
+    def __init__(self, num_classes=2):
+        super(classifier, self).__init__()
+        self.output = conv1x1(512 * 4, num_classes)
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+    def forward(self, x):
+        x = self.output(x)
+        x = nn.functional.interpolate(x, scale_factor=8, mode='bilinear')
+        return x
+
+class dadecoder(nn.Module):
+    def __init__(self):
+        super(dadecoder, self).__init__()
+        n_downsampling = 3
+        # 首先降维度
+        self.conv1 = conv1x1(512 * 4, 512)
+        model = []
+        # 添加上采样
+        for i in range(n_downsampling):
+            mult = 2 ** (n_downsampling - i)
+            model += [nn.ConvTranspose2d(64 * mult, int(64 * mult / 2),
+                                         kernel_size=3, stride=2,
+                                         padding=1, output_padding=1,
+                                         bias=True),
+                      nn.BatchNorm2d(int(64 * mult / 2)),
+                      nn.ReLU(True)]
+
+        model += [nn.ReflectionPad2d(3)]
+        model += [nn.Conv2d(64, 3, kernel_size=7, padding=0)]
+        model += [nn.Tanh()]
+        self.upsamples = nn.Sequential(*model)
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.upsamples(x)
+
+        return x #[-1, 1]

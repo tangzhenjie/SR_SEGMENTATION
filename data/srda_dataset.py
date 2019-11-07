@@ -25,13 +25,14 @@ def get_transformA(opt, convert=True):
     return transforms.Compose(transform_list)
 
 def transform(image, mask, opt):
+    """
     if not opt.no_crop:
         # Random crop
         i, j, h, w = transforms.RandomCrop.get_params(
             image, output_size=(opt.A_crop_size, opt.A_crop_size))
         image = TF.crop(image, i, j, h, w)
         mask = TF.crop(mask, i, j, h, w)
-
+    """
     # Random horizontal flipping
     if random.random() > 0.5:
         image = TF.hflip(image)
@@ -152,12 +153,13 @@ class SrdaDataset(BaseDataset):
         B_img = m.open(B_path).convert('RGB')   # inria数据
         C_img = m.open(C_path).convert('L')     # 马萨诸塞标签
 
-        A, C = transform(A_img, C_img, self.opt)
-        B, D = transformB(B_img, self.opt)
 
-        # 说明：A：马萨诸塞数据[240, 240], B: inria下采样数据[240, 240],
-        #       C: 马萨诸塞数据label数据[240, 240] D:inria数据[800, 800]
-        return {'A': A, 'B': B, 'C': C, 'D': D, 'A_paths': A_path, 'B_paths': B_path, 'C_path': C_path}
+        A, B = transform(A_img, C_img, self.opt)
+        C, D = transformB(B_img, self.opt)
+
+        # 说明：A：马萨诸塞数据[240, 240], B: 马萨诸塞数据label数据[240, 240],
+        #       C: inria下采样数据[240, 240] D:inria数据[800, 800]
+        return {'A': A, 'B': B, 'C': C, 'D': D}
     def __len__(self):
         """Return the total number of images in the dataset.
 
