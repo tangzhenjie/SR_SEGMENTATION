@@ -42,6 +42,19 @@ def transform(image, mask, opt):
     mask = TF.to_tensor(mask)
     return image, mask
 
+def get_transformA(opt, convert=True):
+    transform_list = []
+
+    if convert:
+        transform_list += [transforms.ToTensor()]
+        transform_list += [transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+    return transforms.Compose(transform_list)
+def get_transformB(opt, convert=True):
+    transform_list = []
+    if convert:
+        transform_list += [transforms.ToTensor()]
+    return transforms.Compose(transform_list)
+
 class ConvertDataset(BaseDataset):
     """load train and val for segmentation network or for convert trainA to B using trained cycle_gan
     """
@@ -54,12 +67,6 @@ class ConvertDataset(BaseDataset):
         :param is_train: -- whether training phase or test phase. You can use this flag to add training-specific or test-specific options.
         :return: the modified parser.
         """
-        parser.add_argument('--A_crop_size', type=int, default=60, help='A crop to this size')
-        parser.add_argument('--B_crop_size', type=int, default=240, help='B crop to this size')
-        parser.add_argument('--no_crop', type=bool, default=False,
-                            help='crop the A and B according to the special datasets params  [crop | none],')
-        parser.add_argument('--inter_method_image', type=str, default='bilinear', help='the image Interpolation method')
-        parser.add_argument('--inter_method_label', type=str, default='nearest', help='the label Interpolation method')
         parser.add_argument('--max_dataset_size', type=int, default=float("inf"),
                             help='Maximum number of samples allowed per dataset. If the dataset directory contains more than max_dataset_size, only a subset is loaded.')
         parser.add_argument('--phase', type=str, default='train', help='train, val, test, etc  for the directory name')
@@ -68,12 +75,12 @@ class ConvertDataset(BaseDataset):
         BaseDataset.__init__(self, opt)
         self.dir_A = opt.dataroot + "/" + opt.phase + 'A/images'  # create a path '/trainA/images/*.png'
         self.dir_B = opt.dataroot + "/" + opt.phase + 'A/labels'
-        #self.dir_A = opt.dataroot + "/" + 'fakeB_middle_step/images'  # create a path '/trainA/images/*.png'
-        #self.dir_B = opt.dataroot + "/" + 'fakeB_middle_step/labels'
         self.A_paths = sorted(make_dataset(self.dir_A, opt.max_dataset_size)) # load images from '/trainA/images/*.tif'
         self.B_paths = sorted(make_dataset(self.dir_B, opt.max_dataset_size))
         self.A_size = len(self.A_paths)
 
+        self.transform_A = get_transformA(self.opt)
+        self.transform_B = get_transformB(self.opt)
 
 
     def __getitem__(self, index):
@@ -91,9 +98,10 @@ class ConvertDataset(BaseDataset):
         A_path = self.A_paths[index % self.A_size]  # make sure index is within then range
         B_path = self.B_paths[index % self.A_size]
         A_img = m.open(A_path).convert('RGB')
-        B_img = m.open(B_path).convert('L')
+        B_img = np.array(m.open(B_path).convert('L')).astype(np.long)
 
-        A, B = transform(A_img, B_img, self.opt)
+        A = self.transform_A(A_img)
+        B = self.transform_B(B_img)
 
         return {'A': A, 'B': B, 'A_paths': A_path, 'B_paths': B_path}
 

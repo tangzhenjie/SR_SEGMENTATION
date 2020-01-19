@@ -101,7 +101,7 @@ class BaseModel(ABC):
                 # patch InstanceNorm checkpoints prior to 0.4
                 for key in list(state_dict.keys()):  # need to copy keys here because we mutate in loop
                     self.__patch_instance_norm_state_dict(state_dict, net, key.split('.'))
-                net.load_state_dict(state_dict)
+                net.load_state_dict(state_dict, strict=False)
 
     def update_learning_rate(self):
         """Update learning rates for all the networks; called at the end of every epoch"""

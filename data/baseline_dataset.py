@@ -1,22 +1,32 @@
 from data.base_dataset import BaseDataset
 from data.image_folder import make_dataset
 import torchvision.transforms as transforms
+import torchvision.transforms.functional as TF
 from PIL import Image as m
 import torch
 import numpy as np
-def get_transformA(opt, convert=True):
-    transform_list = []
-    if convert:
-        transform_list += [transforms.Resize(60, interpolation=m.BICUBIC)]
-        transform_list += [transforms.ToTensor()]
-        transform_list += [transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
-    return transforms.Compose(transform_list)
+
+def transformA(image):
+    hr_image = image
+
+    # 降采样成 A_crop_size
+    lr_image = hr_image.resize((60, 60), resample=m.BICUBIC)
+
+    nomal_fun_image = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+
+    hr_image = TF.to_tensor(hr_image)
+    hr_image = nomal_fun_image(hr_image)
+
+    lr_image = TF.to_tensor(lr_image)
+    lr_image = nomal_fun_image(lr_image)
+
+    return lr_image, hr_image
 def get_transformB(opt, convert=True):
     transform_list = []
     if convert:
         transform_list += [transforms.ToTensor()]
     return transforms.Compose(transform_list)
-class SingleDataset(BaseDataset):
+class BaselineDataset(BaseDataset):
     """load train and val for segmentation network
     """
 
@@ -28,29 +38,20 @@ class SingleDataset(BaseDataset):
         :param is_train: -- whether training phase or test phase. You can use this flag to add training-specific or test-specific options.
         :return: the modified parser.
         """
-        parser.add_argument('--phase', type=str, default='train', help='train, val, test, etc  for the directory name')
+        parser.add_argument('--phase', type=str, default='240train', help='train, val, test, etc  for the directory name')
         parser.add_argument('--max_dataset_size', type=int, default=float("inf"),
                             help='Maximum number of samples allowed per dataset. If the dataset directory contains more than max_dataset_size, only a subset is loaded.')
-        parser.add_argument('--is_B', type=bool, default=False,
-                            help='when opt.phase==train it determines whether or not to use trainB')
-        parser.add_argument('--is_fakeB', type=bool, default=True,
-                            help='when opt.phase==train it determines whether or not to use the transfored fakeB')
         return parser
     def __init__(self, opt):
         BaseDataset.__init__(self, opt)
-        if opt.phase == "train":
-            if opt.is_B:
-                self.dir_A = opt.dataroot + "/" + opt.phase + 'B/images'  # create a path '/trainA/images/*.png'
-                self.dir_B = opt.dataroot + "/" + opt.phase + 'B/labels'  # labels path
-            elif opt.is_fakeB:
-                self.dir_A = opt.dataroot + "/" + 'fakeB/images'  # create a path '/trainA/images/*.png'
-                self.dir_B = opt.dataroot + "/" + 'fakeB/labels'
-            else:
-                self.dir_A = opt.dataroot + "/" + opt.phase + 'A/images'  # create a path '/trainA/images/*.png'
-                self.dir_B = opt.dataroot + "/" + opt.phase + 'A/labels'
+        if opt.phase == "240train":
+            self.dir_A = opt.dataroot + "/" + opt.phase + 'B/images'  # create a path '/trainA/images/*.png'
+            self.dir_B = opt.dataroot + "/" + opt.phase + 'B/labels'  # labels path
         elif opt.phase == "val":
             self.dir_A = opt.dataroot + "/" + opt.phase + 'B/images'  # create a path '/trainA/images/*.png'
             self.dir_B = opt.dataroot + "/" + opt.phase + 'B/labels'
+        else:
+             NameError("phase is error")
 
         self.A_paths = sorted(
             make_dataset(self.dir_A, opt.max_dataset_size))  # load images from '/images/*.png'
@@ -58,7 +59,6 @@ class SingleDataset(BaseDataset):
             make_dataset(self.dir_B, opt.max_dataset_size))  # load images from '/labels/*.png'
         self.A_size = len(self.A_paths)
         self.B_size = len(self.B_paths)
-        self.transformA = get_transformA(opt)
         self.transformB = get_transformB(opt)
 
 
@@ -80,10 +80,10 @@ class SingleDataset(BaseDataset):
         A_img = m.open(A_path).convert('RGB')
         B_label = np.array(m.open(B_path).convert('L')).astype(np.long)
         # apply image transformation
-        A = self.transformA(A_img)
+        A, C = transformA(A_img)
         B = self.transformB(B_label)
 
-        return {'A': A, 'B': B, 'A_paths': A_path, 'B_paths': B_path}
+        return {'A': A, 'B': B, 'C': C}
 
 
     def __len__(self):

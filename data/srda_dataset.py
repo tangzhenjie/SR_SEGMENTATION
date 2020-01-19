@@ -25,14 +25,14 @@ def get_transformA(opt, convert=True):
     return transforms.Compose(transform_list)
 
 def transform(image, mask, opt):
-    """
+
     if not opt.no_crop:
         # Random crop
         i, j, h, w = transforms.RandomCrop.get_params(
             image, output_size=(opt.A_crop_size, opt.A_crop_size))
         image = TF.crop(image, i, j, h, w)
         mask = TF.crop(mask, i, j, h, w)
-    """
+
     # Random horizontal flipping
     if random.random() > 0.5:
         image = TF.hflip(image)
@@ -42,24 +42,24 @@ def transform(image, mask, opt):
     if random.random() > 0.5:
         image = TF.vflip(image)
         mask = TF.vflip(mask)
-
-
-
-    # 插值
-    #if opt.inter_method_image != "":
-    #    if opt.inter_method_image == "bilinear":
-    #        interfunction_image = transforms.Resize(opt.B_crop_size)
-    #        image = interfunction_image(image)
-    #if opt.inter_method_label != "":
-    #    if opt.inter_method_label == "nearest":
-    #       mask = mask.resize((opt.B_crop_size, opt.B_crop_size))
-    mask = np.array(mask).astype(np.long)
+    # 图像插值成[60, 60]
+    image_lr = image.resize((60, 60))
+    # 72 to 240
+    up_image = image.resize((240, 240))
+    # 插值只插值标签插值成[240, 240]
+    if opt.inter_method_label != "":
+        if opt.inter_method_label == "nearest":
+           mask_up = mask.resize((opt.B_crop_size, opt.B_crop_size))
+    mask_up = np.array(mask_up).astype(np.long)
     nomal_fun_image = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+
     # Transform to tensor
-    image = TF.to_tensor(image)
-    image = nomal_fun_image(image)
-    mask = TF.to_tensor(mask)
-    return image, mask
+    image_lr = TF.to_tensor(image_lr)
+    image_lr = nomal_fun_image(image_lr)
+    up_image = TF.to_tensor(up_image)
+    up_image = nomal_fun_image(up_image)
+    mask_up = TF.to_tensor(mask_up)
+    return image_lr, mask_up, up_image
 
 
 def transformB(image, opt):
@@ -69,7 +69,7 @@ def transformB(image, opt):
     hr_image = TF.crop(image, i, j, h, w)
 
     # 降采样成 A_crop_size
-    lr_image = hr_image.resize((opt.A_crop_size, opt.A_crop_size))
+    lr_image = hr_image.resize((60, 60), resample=m.BICUBIC)
 
     nomal_fun_image = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 
@@ -97,9 +97,9 @@ class SrdaDataset(BaseDataset):
         :param is_train: -- whether training phase or test phase. You can use this flag to add training-specific or test-specific options.
         :return: the modified parser.
         """
-        parser.add_argument('--A_crop_size', type=int, default=240, help='crop to this size')
-        parser.add_argument('--B_crop_size', type=int, default=800, help='crop to this size')
-        parser.add_argument('--inter_method_image', type=str, default='bilinear', help='the image Interpolation method')
+        parser.add_argument('--A_crop_size', type=int, default=72, help='crop to this size') # 240
+        parser.add_argument('--B_crop_size', type=int, default=240, help='crop to this size')
+        parser.add_argument('--inter_method_image', type=str, default='bicubic', help='the image Interpolation method')
         parser.add_argument('--inter_method_label', type=str, default='nearest', help='the label Interpolation method')
         parser.add_argument('--no_crop',  type=bool, default=False,
                             help='crop the A and B according to the special datasets params  [crop | none],')
@@ -154,12 +154,12 @@ class SrdaDataset(BaseDataset):
         C_img = m.open(C_path).convert('L')     # 马萨诸塞标签
 
 
-        A, B = transform(A_img, C_img, self.opt)
+        A, B, E= transform(A_img, C_img, self.opt)
         C, D = transformB(B_img, self.opt)
 
-        # 说明：A：马萨诸塞数据[240, 240], B: 马萨诸塞数据label数据[240, 240],
-        #       C: inria下采样数据[240, 240] D:inria数据[800, 800]
-        return {'A': A, 'B': B, 'C': C, 'D': D}
+        # 说明：A：马萨诸塞数据[60, 60], B: 马萨诸塞数据label上采样数据[240, 240],
+        #       C: inria下采样数据[60, 60] D:inria数据[240, 240] E: 马萨诸塞数据72 -> 240
+        return {'A': A, 'B': B, 'C': C, 'D': D, 'E': E}
     def __len__(self):
         """Return the total number of images in the dataset.
 

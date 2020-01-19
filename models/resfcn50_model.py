@@ -1,9 +1,9 @@
 import torch
 import itertools
 from .base_model import BaseModel
-from . import networks
+from . import networks_now
 from torch import nn
-from .networks import Regularization
+from .networks_now import Regularization
 
 
 class Resfcn50Model(BaseModel):
@@ -22,7 +22,7 @@ class Resfcn50Model(BaseModel):
         self.loss_names = ["resfcn50"]
         self.visual_names = ["image", "label", "prediction"]
         self.model_names = ['resfcn50']
-        self.netresfcn50 = networks.resfcn50(opt.is_restore_from_imagenet, opt.resnet_weight_path, opt.num_classes, self.gpu_ids)
+        self.netresfcn50 = networks_now.resfcn50(opt.is_restore_from_imagenet, opt.resnet_weight_path, opt.num_classes, self.gpu_ids)
         self.L2_loss_net = Regularization(model=self.netresfcn50, weight_decay=0.05).to(self.device) # L2正则化
         #self.netresfcn50.to(self.device)
         if self.isTrain:

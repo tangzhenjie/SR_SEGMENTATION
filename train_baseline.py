@@ -1,4 +1,4 @@
-﻿from options.train_options import TrainOptions
+from options.train_options import TrainOptions
 from data import create_dataset
 from models import create_model
 from util.visualizer import Visualizer
@@ -8,7 +8,6 @@ from util import util
 import time
 import os
 import numpy as np
-best_result = 0
 
 if __name__ == '__main__':
     # 加载设置
@@ -27,7 +26,6 @@ if __name__ == '__main__':
 
     # 改变phase参数然后获取验证集(逻辑上有点问题，但是代码没有问题，因为singledataset中设置参数的静态方法没有执行)
     opt_val.phase = 'val'
-    opt_val.dataset_mode = 'single'
     dataset_val = create_dataset(opt_val)
     dataset_val_size = len(dataset_val)
     print('The number of valling images = %d' % dataset_val_size)
@@ -36,7 +34,7 @@ if __name__ == '__main__':
     # 创建训练模型
     model_train = create_model(opt_train)
     model_train.train()
-    opt_train.continue_train = True
+    #opt_train.continue_train = True
     model_train.setup(opt_train)
 
     # 创建验证模型
@@ -105,10 +103,6 @@ if __name__ == '__main__':
             if i % opt_train.display_freq == 0:
                 save_segment_result(model_val.get_current_visuals(), epoch, opt_train.display_winsize, image_dir, web_dir, opt_train.name)
         val_score, val_class_iou = metrics.get_scores()
-        if best_result < val_class_iou[1]:
-            best_result = val_class_iou[1]
-            with open(web_dir + "best_result.txt", mode="w+") as f:
-                f.write("epoch" + str(epoch) + ":"+ str(val_class_iou))
         print("####################### val result start ##########################")
         print("Overall Acc:%.3f"%val_score["OverallAcc"] + " Mean Acc:%.3f"%val_score["MeanAcc"] + " FreqW Acc:%.3f"%val_score["FreqWAcc"] + " Mean IoU:%.3f"%val_score["MeanIoU"] + " Class_IoU:" + str(val_class_iou))
         # 一个epoch 改变一次学习率

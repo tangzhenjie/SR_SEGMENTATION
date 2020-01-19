@@ -8,8 +8,8 @@ import torchvision.transforms as transforms
 def get_transformA(opt, convert=True):
     transform_list = []
 
-    if not opt.no_crop:
-        transform_list.append(transforms.RandomCrop(opt.A_crop_size))
+    #if not opt.no_crop:
+    #    transform_list.append(transforms.RandomCrop(opt.A_crop_size))
 
     if not opt.no_flip:
         transform_list.append(transforms.RandomHorizontalFlip())
@@ -19,21 +19,21 @@ def get_transformA(opt, convert=True):
     #        transform_list += [transforms.Resize(opt.B_crop_size)]
     if convert:
         transform_list += [transforms.ToTensor()]
-        #transform_list += [transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+        transform_list += [transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
     return transforms.Compose(transform_list)
 
 
 def get_transformB(opt, convert=True):
     transform_list = []
 
-    if not opt.no_crop:
-        transform_list.append(transforms.RandomCrop(opt.B_crop_size))
+    #if not opt.no_crop:
+    #    transform_list.append(transforms.RandomCrop(opt.B_crop_size))
 
     #transform_list += [transforms.Resize(opt.A_crop_size, interpolation=m.BICUBIC)]
 
     if convert:
         transform_list += [transforms.ToTensor()]
-        #transform_list += [transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+        transform_list += [transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
     return transforms.Compose(transform_list)
 class UnalignedDataset(BaseDataset):
     """
@@ -71,7 +71,7 @@ class UnalignedDataset(BaseDataset):
         """
         BaseDataset.__init__(self, opt)
         self.dir_A = opt.dataroot + "/" + opt.phase + 'A/images'  # create a path '/trainA/images/*.tif'
-        self.dir_B = opt.dataroot + "/" + opt.phase + 'B/images'  # create a path '/trainB/images/*.tif'
+        self.dir_B = opt.dataroot + "/compress_" + opt.phase + 'B/images'  # create a path '/trainB/images/*.tif'
 
         self.A_paths = sorted(make_dataset(self.dir_A, opt.max_dataset_size))   # load images from '/trainA/images/*.tif'
         self.B_paths = sorted(make_dataset(self.dir_B, opt.max_dataset_size))    # load images from '/trainA/images/*.tif'

@@ -1,5 +1,5 @@
 from .base_model import BaseModel
-from . import networks
+from . import networks_now
 import torch
 
 class SRGANModel(BaseModel):
@@ -13,11 +13,11 @@ class SRGANModel(BaseModel):
         self.loss_names = ["d", "g"]
         self.visual_names = ["lr_image", "hr_image", "sr_img"]
         self.model_names = ['generator', 'discriminator']
-        self.netgenerator = networks.Srgan_Generator(opt.upscale_factor, self.gpu_ids)
-        self.netdiscriminator = networks.Srgan_Discriminator(self.gpu_ids)
+        self.netgenerator = networks_now.Srgan_Generator(opt.upscale_factor, self.gpu_ids)
+        self.netdiscriminator = networks_now.Srgan_Discriminator(self.gpu_ids)
         if self.isTrain:
             #self.g_loss = networks.Srgan_Gloss(self.gpu_ids)
-            self.g_loss = networks.GeneratorLoss().to(self.device)
+            self.g_loss = networks_now.GeneratorLoss().to(self.device)
             self.optimizerG = torch.optim.Adam(self.netgenerator.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
             self.optimizerD = torch.optim.Adam(self.netdiscriminator.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
             self.optimizers.append(self.optimizerG)

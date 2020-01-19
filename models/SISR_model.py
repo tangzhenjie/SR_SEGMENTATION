@@ -1,7 +1,7 @@
 from .base_model import BaseModel
-from . import networks
+from . import networks_now
 from util.image_pool import ImagePool
-from . import networks
+from . import networks_now
 import torch
 import itertools
 
@@ -75,17 +75,17 @@ class SISRModel(BaseModel):
 
         # 构建网络
         if self.isTrain:
-            self.netG_A = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm,
-                                            not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
-            self.netG_B = networks.define_G(opt.output_nc, opt.input_nc, opt.ngf, opt.netG, opt.norm,
-                                            not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
+            self.netG_A = networks_now.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm,
+                                                not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
+            self.netG_B = networks_now.define_G(opt.output_nc, opt.input_nc, opt.ngf, opt.netG, opt.norm,
+                                                not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
         if self.isTrain:
-            self.netD_A = networks.define_D(opt.output_nc, opt.ndf, opt.netD,
-                                            opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids)
-            self.netD_B = networks.define_D(opt.input_nc, opt.ndf, opt.netD,
-                                            opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids)
+            self.netD_A = networks_now.define_D(opt.output_nc, opt.ndf, opt.netD,
+                                                opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids)
+            self.netD_B = networks_now.define_D(opt.input_nc, opt.ndf, opt.netD,
+                                                opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids)
         # 定义分割网络
-        self.netSeg = networks.resfcn50(opt.is_restore_from_imagenet, opt.resnet_weight_path, opt.num_classes, self.gpu_ids)
+        self.netSeg = networks_now.resfcn50(opt.is_restore_from_imagenet, opt.resnet_weight_path, opt.num_classes, self.gpu_ids)
 
         if self.isTrain:
             if opt.lambda_identity > 0.0:  # only works when input and output images have the same number of channels
@@ -93,13 +93,13 @@ class SISRModel(BaseModel):
             self.fake_A_pool = ImagePool(opt.pool_size)  # create image buffer to store previously generated images
             self.fake_B_pool = ImagePool(opt.pool_size)  # create image buffer to store previously generated images
             # define loss functions
-            self.criterionGAN = networks.GANLoss(opt.gan_mode).to(self.device)  # define GAN loss.
+            self.criterionGAN = networks_now.GANLoss(opt.gan_mode).to(self.device)  # define GAN loss.
             self.criterionCycle = torch.nn.L1Loss()
             self.criterionIdt = torch.nn.L1Loss()
             self.criterionSeg = torch.nn.CrossEntropyLoss()
 
             # 正则化loss
-            self.L2_loss_net = networks.Regularization(model=self.netSeg, weight_decay=0.05)  # L2正则化
+            self.L2_loss_net = networks_now.Regularization(model=self.netSeg, weight_decay=0.05)  # L2正则化
             self.L2_loss_net.to(self.device)
             # initialize optimizers; schedulers will be automatically created by function <BaseModel.setup>.
             self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A.parameters(), self.netG_B.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))

@@ -8,7 +8,6 @@ import torch.utils.model_zoo as model_zoo
 from torch.hub import load_state_dict_from_url
 import torch.nn.functional as F
 from torchvision.models.vgg import vgg16
-import torchvision.models as models
 
 model_urls = {
     'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
@@ -237,182 +236,7 @@ def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
                      padding=dilation, groups=groups, bias=False, dilation=dilation)
 ##############################################################################
 # Classes
-##############################################################################
-
-##############################################################################
-# resfcn50 model
-##############################################################################
-class BasicBlock(nn.Module):
-    expansion = 1
-
-    def __init__(self, inplanes, planes, stride=1, downsample=None, groups=1,
-                 base_width=64, dilation=1, norm_layer=None):
-        super(BasicBlock, self).__init__()
-        if norm_layer is None:
-            norm_layer = nn.BatchNorm2d
-        if groups != 1 or base_width != 64:
-            raise ValueError('BasicBlock only supports groups=1 and base_width=64')
-        if dilation > 1:
-            raise NotImplementedError("Dilation > 1 not supported in BasicBlock")
-        # Both self.conv1 and self.downsample layers downsample the input when stride != 1
-        self.conv1 = conv3x3(inplanes, planes, stride)
-        self.bn1 = norm_layer(planes)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv2 = conv3x3(planes, planes)
-        self.bn2 = norm_layer(planes)
-        self.downsample = downsample
-        self.stride = stride
-
-    def forward(self, x):
-        identity = x
-
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-
-        out = self.conv2(out)
-        out = self.bn2(out)
-
-        if self.downsample is not None:
-            identity = self.downsample(x)
-
-        out += identity
-        out = self.relu(out)
-
-        return out
-class Bottleneck(nn.Module):
-    expansion = 4
-
-    def __init__(self, inplanes, planes, stride=1, downsample=None, groups=1,
-                 base_width=64, dilation=1, norm_layer=None):
-        super(Bottleneck, self).__init__()
-        if norm_layer is None:
-            norm_layer = nn.BatchNorm2d
-        width = int(planes * (base_width / 64.)) * groups
-        # Both self.conv2 and self.downsample layers downsample the input when stride != 1
-        self.conv1 = conv1x1(inplanes, width)
-        self.bn1 = norm_layer(width)
-        self.conv2 = conv3x3(width, width, stride, groups, dilation)
-        self.bn2 = norm_layer(width)
-        self.conv3 = conv1x1(width, planes * self.expansion)
-        self.bn3 = norm_layer(planes * self.expansion)
-        self.relu = nn.ReLU(inplace=True)
-        self.downsample = downsample
-        self.stride = stride
-
-    def forward(self, x):
-        identity = x
-
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-
-        out = self.conv2(out)
-        out = self.bn2(out)
-        out = self.relu(out)
-
-        out = self.conv3(out)
-        out = self.bn3(out)
-
-        if self.downsample is not None:
-            identity = self.downsample(x)
-
-        out += identity
-        out = self.relu(out)
-
-        return out
-class ResFCN(nn.Module):
-
-    def __init__(self, block, layers, num_classes=1000, zero_init_residual=False,
-                 groups=1, width_per_group=64, replace_stride_with_dilation=None,
-                 norm_layer=None):
-        super(ResFCN, self).__init__()
-        if norm_layer is None:
-            norm_layer = nn.BatchNorm2d
-        self._norm_layer = norm_layer
-
-        self.inplanes = 64
-        self.dilation = 1
-        if replace_stride_with_dilation is None:
-            # each element in the tuple indicates if we should replace
-            # the 2x2 stride with a dilated convolution instead
-            replace_stride_with_dilation = [False, False, False]
-        if len(replace_stride_with_dilation) != 3:
-            raise ValueError("replace_stride_with_dilation should be None "
-                             "or a 3-element tuple, got {}".format(replace_stride_with_dilation))
-        self.groups = groups
-        self.base_width = width_per_group
-        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
-                               bias=False)
-        self.bn1 = norm_layer(self.inplanes)
-        self.relu = nn.ReLU(inplace=True)
-        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.layer1 = self._make_layer(block, 64, layers[0])
-        self.layer2 = self._make_layer(block, 128, layers[1], stride=2,
-                                       dilate=replace_stride_with_dilation[0])
-        self.layer3 = self._make_layer(block, 256, layers[2], stride=1,
-                                       dilate=replace_stride_with_dilation[1])
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=1,
-                                       dilate=replace_stride_with_dilation[2])
-        #self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.output = conv1x1(512 * block.expansion, num_classes)
-        #self.fc = nn.Linear(512 * block.expansion, num_classes)
-
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-
-        # Zero-initialize the last BN in each residual branch,
-        # so that the residual branch starts with zeros, and each residual block behaves like an identity.
-        # This improves the model by 0.2~0.3% according to https://arxiv.org/abs/1706.02677
-        if zero_init_residual:
-            for m in self.modules():
-                if isinstance(m, Bottleneck):
-                    nn.init.constant_(m.bn3.weight, 0)
-                elif isinstance(m, BasicBlock):
-                    nn.init.constant_(m.bn2.weight, 0)
-
-    def _make_layer(self, block, planes, blocks, stride=1, dilate=False):
-        norm_layer = self._norm_layer
-        downsample = None
-        previous_dilation = self.dilation
-        if dilate:
-            self.dilation *= stride
-            stride = 1
-        if stride != 1 or self.inplanes != planes * block.expansion:
-            downsample = nn.Sequential(
-                conv1x1(self.inplanes, planes * block.expansion, stride),
-                norm_layer(planes * block.expansion),
-            )
-
-        layers = []
-        layers.append(block(self.inplanes, planes, stride, downsample, self.groups,
-                            self.base_width, previous_dilation, norm_layer))
-        self.inplanes = planes * block.expansion
-        for _ in range(1, blocks):
-            layers.append(block(self.inplanes, planes, groups=self.groups,
-                                base_width=self.base_width, dilation=self.dilation,
-                                norm_layer=norm_layer))
-
-        return nn.Sequential(*layers)
-
-    def forward(self, x):
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
-        x = self.maxpool(x)
-
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
-        x = self.output(x)
-        x = nn.functional.interpolate(x, scale_factor=8, mode='bilinear')
-        return x
-
+############################################################################
 ###############################################################################
 # cycle gan model
 ###############################################################################
@@ -887,118 +711,138 @@ class Regularization(torch.nn.Module):
         print("---------------------------------------------------")
 
 #############################################################################
-# srgan model
+# version5
 #############################################################################
 
-def Srgan_Generator(upscale_factor=1, gpu_ids=[]):
-    model = Srgan_G(upscale_factor) # out [0, 1]
+def generator(upscale_factor=4, num_cls=2, gpu_ids=[]):
+    model = Generator(upscale_factor, num_cls) # out [-1, 1]
     if len(gpu_ids) > 0:
         assert(torch.cuda.is_available())
         model.to(gpu_ids[0])
         model = torch.nn.DataParallel(model, gpu_ids)  # multi-GPUs
     return model
-def Srgan_Discriminator(gpu_ids=[]):
-    model = Srgan_D()
+def discriminator(gpu_ids=[]):
+    model = Discriminator()
     if len(gpu_ids) > 0:
         assert(torch.cuda.is_available())
         model.to(gpu_ids[0])
         model = torch.nn.DataParallel(model, gpu_ids)  # multi-GPUs
     return model
-
-class Srgan_G(nn.Module):
-    def __init__(self, scale_factor):
+def generatorloss(gpu_ids=[]):
+    model = GeneratorLoss()
+    if len(gpu_ids) > 0:
+        assert (torch.cuda.is_available())
+        model.to(gpu_ids[0])
+        model = torch.nn.DataParallel(model, gpu_ids)  # multi-GPUs
+    return model
+def fc_discriminator(num_classes=2, gpu_ids=[]):
+    model = FCDiscriminator(num_classes)
+    if len(gpu_ids) > 0:
+        assert (torch.cuda.is_available())
+        model.to(gpu_ids[0])
+        model = torch.nn.DataParallel(model, gpu_ids)  # multi-GPUs
+    return model
+# 特征提取器
+class Generator(nn.Module):
+    def __init__(self, scale_factor, num_cls=2):
         upsample_block_num = int(math.log(scale_factor, 2))
 
-        super(Srgan_G, self).__init__()
-        self.block1 = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=9, padding=4),
-            nn.PReLU()
+        super(Generator, self).__init__()
+        self.init_feature = nn.Sequential(
+            nn.Conv2d(3, 64, 3, 1, 1, bias=False),
+            nn.LeakyReLU(0.1, inplace=True),
+            ResB(64),
+            ResASPPB(64),
+            ResB(64),
+            ResASPPB(64),
+            ResB(64),
         )
-        self.block2 = ResidualBlock(64)
-        self.block3 = ResidualBlock(64)
-        self.block4 = ResidualBlock(64)
-        self.block5 = ResidualBlock(64)
-        self.block6 = ResidualBlock(64)
-        self.block7 = nn.Sequential(
-            nn.Conv2d(64, 64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64)
-        )
-        block8 = [UpsampleBLock(64, 2) for _ in range(upsample_block_num)]
-        block8.append(nn.Conv2d(64, 3, kernel_size=9, padding=4))
-        self.block8 = nn.Sequential(*block8)
+        self.up_block1 = UpsampleBLock(64, 2)
+        self.up_block2 = UpsampleBLock(64, 2)
+
+        self.upsample1 = nn.Upsample(size=(120, 120), mode='bilinear', align_corners=True)
+        self.upsample2 = nn.Upsample(size=(240, 240), mode='bilinear', align_corners=True)
+
+        self.mix_conv1 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
+        self.mix_conv2 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
+
+
+        self.classifier = nn.Conv2d(64, num_cls, kernel_size=9, padding=4)
+        self.SR = nn.Conv2d(64, 3, kernel_size=9, padding=4)
+
+        # 初始化参数
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
-        block1 = self.block1(x)
-        block2 = self.block2(block1)
-        block3 = self.block3(block2)
-        block4 = self.block4(block3)
-        block5 = self.block5(block4)
-        block6 = self.block6(block5)
-        block7 = self.block7(block6)
-        block8 = self.block8(block1 + block7)
+        # 超分辨
+        feature = self.init_feature(x)
+        up_block1 = self.up_block1(feature)
+        up_block2 = self.up_block2(up_block1)
+        sr_pre = self.SR(up_block2)
+        imagesr = F.tanh(sr_pre)
+        imagesr_down = nn.functional.interpolate(imagesr, size=60) # 最近邻
+        # 分割
+        up2_feature = self.upsample1(feature)
+        mix2 = up2_feature + up_block1
+        mix2_conv = self.mix_conv1(mix2)
 
-        return (F.tanh(block8) + 1) / 2
-class Srgan_D(nn.Module):
-    def __init__(self):
-        super(Srgan_D, self).__init__()
-        self.net = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=3, padding=1),
-            nn.LeakyReLU(0.2),
+        up4_feature = self.upsample2(mix2_conv)
+        mix4 = up4_feature + up_block2
+        mix4_conv = self.mix_conv2(mix4)
+        pre = self.classifier(mix4_conv)
 
-            nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(64),
-            nn.LeakyReLU(0.2),
-
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.BatchNorm2d(128),
-            nn.LeakyReLU(0.2),
-
-            nn.Conv2d(128, 128, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(128),
-            nn.LeakyReLU(0.2),
-
-            nn.Conv2d(128, 256, kernel_size=3, padding=1),
-            nn.BatchNorm2d(256),
-            nn.LeakyReLU(0.2),
-
-            nn.Conv2d(256, 256, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(256),
-            nn.LeakyReLU(0.2),
-
-            nn.Conv2d(256, 512, kernel_size=3, padding=1),
-            nn.BatchNorm2d(512),
-            nn.LeakyReLU(0.2),
-
-            nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(512),
-            nn.LeakyReLU(0.2),
-
-            nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(512, 1024, kernel_size=1),
-            nn.LeakyReLU(0.2),
-            nn.Conv2d(1024, 1, kernel_size=1)
-        )
-
-    def forward(self, x):
-        batch_size = x.size(0)
-        return F.sigmoid(self.net(x).view(batch_size))
-class ResidualBlock(nn.Module):
+        return feature, pre, imagesr, imagesr_down #[-1, 1]
+class ResASPPB(nn.Module):
     def __init__(self, channels):
-        super(ResidualBlock, self).__init__()
-        self.conv1 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
-        self.bn1 = nn.BatchNorm2d(channels)
-        self.prelu = nn.PReLU()
-        self.conv2 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
-        self.bn2 = nn.BatchNorm2d(channels)
+        super(ResASPPB, self).__init__()
+        self.conv1_1 = nn.Sequential(nn.Conv2d(channels, channels, 3, 1, 1, 1, bias=False), nn.LeakyReLU(0.1, inplace=True))
+        self.conv2_1 = nn.Sequential(nn.Conv2d(channels, channels, 3, 1, 4, 4, bias=False), nn.LeakyReLU(0.1, inplace=True))
+        self.conv3_1 = nn.Sequential(nn.Conv2d(channels, channels, 3, 1, 8, 8, bias=False), nn.LeakyReLU(0.1, inplace=True))
+        self.conv1_2 = nn.Sequential(nn.Conv2d(channels, channels, 3, 1, 1, 1, bias=False), nn.LeakyReLU(0.1, inplace=True))
+        self.conv2_2 = nn.Sequential(nn.Conv2d(channels, channels, 3, 1, 4, 4, bias=False), nn.LeakyReLU(0.1, inplace=True))
+        self.conv3_2 = nn.Sequential(nn.Conv2d(channels, channels, 3, 1, 8, 8, bias=False), nn.LeakyReLU(0.1, inplace=True))
+        self.conv1_3 = nn.Sequential(nn.Conv2d(channels, channels, 3, 1, 1, 1, bias=False), nn.LeakyReLU(0.1, inplace=True))
+        self.conv2_3 = nn.Sequential(nn.Conv2d(channels, channels, 3, 1, 4, 4, bias=False), nn.LeakyReLU(0.1, inplace=True))
+        self.conv3_3 = nn.Sequential(nn.Conv2d(channels, channels, 3, 1, 8, 8, bias=False), nn.LeakyReLU(0.1, inplace=True))
+        self.b_1 = nn.Conv2d(channels * 3, channels, 1, 1, 0, bias=False)
+        self.b_2 = nn.Conv2d(channels * 3, channels, 1, 1, 0, bias=False)
+        self.b_3 = nn.Conv2d(channels * 3, channels, 1, 1, 0, bias=False)
+    def __call__(self, x):
+        buffer_1 = []
+        buffer_1.append(self.conv1_1(x))
+        buffer_1.append(self.conv2_1(x))
+        buffer_1.append(self.conv3_1(x))
+        buffer_1 = self.b_1(torch.cat(buffer_1, 1))
 
-    def forward(self, x):
-        residual = self.conv1(x)
-        residual = self.bn1(residual)
-        residual = self.prelu(residual)
-        residual = self.conv2(residual)
-        residual = self.bn2(residual)
+        buffer_2 = []
+        buffer_2.append(self.conv1_2(buffer_1))
+        buffer_2.append(self.conv2_2(buffer_1))
+        buffer_2.append(self.conv3_2(buffer_1))
+        buffer_2 = self.b_2(torch.cat(buffer_2, 1))
 
-        return x + residual
+        buffer_3 = []
+        buffer_3.append(self.conv1_3(buffer_2))
+        buffer_3.append(self.conv2_3(buffer_2))
+        buffer_3.append(self.conv3_3(buffer_2))
+        buffer_3 = self.b_3(torch.cat(buffer_3, 1))
+
+        return x + buffer_1 + buffer_2 + buffer_3
+class ResB(nn.Module):
+    def __init__(self, channels):
+        super(ResB, self).__init__()
+        self.body = nn.Sequential(
+            nn.Conv2d(channels, channels, 3, 1, 1, bias=False),
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.Conv2d(channels, channels, 3, 1, 1, bias=False),
+        )
+    def __call__(self,x):
+        out = self.body(x)
+        return out + x
 class UpsampleBLock(nn.Module):
     def __init__(self, in_channels, up_scale):
         super(UpsampleBLock, self).__init__()
@@ -1012,14 +856,95 @@ class UpsampleBLock(nn.Module):
         x = self.prelu(x)
         return x
 
-def Srgan_Gloss(gpu_ids=[]):
-    model = GeneratorLoss()
-    if len(gpu_ids) > 0:
-        assert(torch.cuda.is_available())
-        model.to(gpu_ids[0])
-        model = torch.nn.DataParallel(model, gpu_ids)  # multi-GPUs
-    return model
+# 超分辨判别器
+class Discriminator(nn.Module):
+    def __init__(self, ndf = 64):
+        super(Discriminator, self).__init__()
 
+        self.conv1 = nn.Conv2d(3, ndf, kernel_size=4, stride=2, padding=1)
+        self.conv2 = nn.Conv2d(ndf, ndf*2, kernel_size=4, stride=2, padding=1)
+        self.bn2 = nn.BatchNorm2d(ndf*2)
+        self.conv3 = nn.Conv2d(ndf*2, ndf*4, kernel_size=4, stride=2, padding=1)
+        self.bn3 = nn.BatchNorm2d(ndf * 4)
+        self.conv4 = nn.Conv2d(ndf*4, ndf*8, kernel_size=4, stride=2, padding=1)
+        self.bn4 = nn.BatchNorm2d(ndf * 8)
+        self.classifier = nn.Conv2d(ndf*8, 1, kernel_size=4, stride=2, padding=1)
+
+        self.leaky_relu = nn.LeakyReLU(negative_slope=0.2, inplace=True)
+        self.up_sample = nn.Upsample(size=(240, 240), mode='bilinear')
+        #self.sigmoid = nn.Sigmoid()
+        # 初始化参数
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.leaky_relu(x)
+        x = self.conv2(x)
+        x = self.bn2(x)
+        x = self.leaky_relu(x)
+        x = self.conv3(x)
+        x = self.bn3(x)
+        x = self.leaky_relu(x)
+        x = self.conv4(x)
+        x = self.bn4(x)
+        x = self.leaky_relu(x)
+        x = self.classifier(x)
+        x = self.up_sample(x)
+        #x = self.sigmoid(x)
+
+        return x
+
+# 域转换输出空间判别器
+class FCDiscriminator(nn.Module):
+
+    def __init__(self, num_classes, ndf = 64):
+        super(FCDiscriminator, self).__init__()
+
+        self.conv1 = nn.Conv2d(num_classes, ndf, kernel_size=4, stride=2, padding=1)
+        self.conv2 = nn.Conv2d(ndf, ndf*2, kernel_size=4, stride=2, padding=1)
+        self.bn2 = nn.BatchNorm2d(ndf*2)
+        self.conv3 = nn.Conv2d(ndf*2, ndf*4, kernel_size=4, stride=2, padding=1)
+        self.bn3 = nn.BatchNorm2d(ndf * 4)
+        self.conv4 = nn.Conv2d(ndf*4, ndf*8, kernel_size=4, stride=2, padding=1)
+        self.bn4 = nn.BatchNorm2d(ndf * 8)
+        self.classifier = nn.Conv2d(ndf*8, 1, kernel_size=4, stride=2, padding=1)
+
+        self.leaky_relu = nn.LeakyReLU(negative_slope=0.2, inplace=True)
+        self.up_sample = nn.Upsample(size=(240, 240), mode='bilinear')
+        #self.sigmoid = nn.Sigmoid()
+        # 初始化参数
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.leaky_relu(x)
+        x = self.conv2(x)
+        x = self.bn2(x)
+        x = self.leaky_relu(x)
+        x = self.conv3(x)
+        x = self.bn3(x)
+        x = self.leaky_relu(x)
+        x = self.conv4(x)
+        x = self.bn4(x)
+        x = self.leaky_relu(x)
+        x = self.classifier(x)
+        x = self.up_sample(x)
+        #x = self.sigmoid(x)
+
+        return x
+
+
+# 超分辨生成器损失
 class GeneratorLoss(nn.Module):
     def __init__(self):
         super(GeneratorLoss, self).__init__()
@@ -1031,16 +956,20 @@ class GeneratorLoss(nn.Module):
         self.mse_loss = nn.MSELoss()
         self.tv_loss = TVLoss()
 
-    def forward(self, out_labels, out_images, target_images):
-        # Adversarial Loss
-        adversarial_loss = torch.mean(1 - out_labels)
-        # Perception Loss
-        perception_loss = self.mse_loss(self.loss_network(out_images), self.loss_network(target_images))
-        # Image Loss
-        image_loss = self.mse_loss(out_images, target_images)
-        # TV Loss
-        tv_loss = self.tv_loss(out_images)
-        return image_loss + 0.001 * adversarial_loss + 0.006 * perception_loss + 2e-8 * tv_loss
+    def forward(self, out_images, target_images, is_sr=False):
+        if is_sr:
+            # Perception Loss
+            perception_loss = self.mse_loss(self.loss_network(out_images), self.loss_network(target_images))
+            # Image Loss
+            image_loss = self.mse_loss(out_images, target_images)
+            # TV Loss
+            tv_loss = self.tv_loss(out_images)
+            return image_loss + 2e-8 * tv_loss  + 0.006 * perception_loss
+        else:
+            content_loss = self.mse_loss(self.loss_network(out_images), self.loss_network(target_images))
+
+            return content_loss
+
 class TVLoss(nn.Module):
     def __init__(self, tv_loss_weight=1):
         super(TVLoss, self).__init__()
@@ -1059,238 +988,3 @@ class TVLoss(nn.Module):
     @staticmethod
     def tensor_size(t):
         return t.size()[1] * t.size()[2] * t.size()[3]
-
-#############################################################################
-# SrCycleGAN model
-#############################################################################
-
-def srcycle_GA(upscale_factor=4, gpu_ids=[]):
-    """
-    我们先使用srgan的生成器模型，后期换成遥感方向的。注意：因为该生成器既作为域转换，又作为超分辨。所以需要特殊设计
-    :param upscale_factor:
-    :param gpu_ids:
-    :return:
-    """
-    model = Srgan_G(upscale_factor)  # out [0, 1]
-    if len(gpu_ids) > 0:
-        assert (torch.cuda.is_available())
-        model.to(gpu_ids[0])
-        model = torch.nn.DataParallel(model, gpu_ids)  # multi-GPUs
-    return model
-def srcycle_GB(upscale_factor=4, gpu_ids=[]):
-    """
-    我们为了简单起见先使用超分辨的逆过程最符合现实的降级模型（先卷积后下采样），域转换后期再特殊设计
-    :param upscale_factor:
-    :param gpu_ids:
-    :return:
-    """
-    model = Srcycle_GB(upscale_factor)  # out [0, 1]
-    if len(gpu_ids) > 0:
-        assert (torch.cuda.is_available())
-        model.to(gpu_ids[0])
-        model = torch.nn.DataParallel(model, gpu_ids)  # multi-GPUs
-    return model
-
-class Srcycle_GB(nn.Module):
-    def __init__(self, downscale_factor=4):
-        #upsample_block_num = int(math.log(downscale_factor, 2))
-        super(Srcycle_GB, self).__init__()
-        self.conv1 = nn.Sequential(
-            nn.Conv2d(in_channels=3, out_channels=64, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU()
-        )
-
-        self.pool1 = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Sequential(
-            nn.Conv2d(in_channels=64, out_channels=128, kernel_size=5, stride=1, padding=2),
-            nn.BatchNorm2d(128),
-            nn.ReLU()
-        )
-        self.pool2 = nn.MaxPool2d(2, 2)
-        self.conv3 = nn.Sequential(
-            nn.Conv2d(in_channels=128, out_channels=64, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(64)
-        )
-        self.conv4 = nn.Conv2d(64, 3, kernel_size=1)
-    def forward(self, x):
-        conv1 = self.conv1(x)
-        pool1 = self.pool1(conv1)
-        conv2 = self.conv2(pool1)
-        pool2 = self.pool2(conv2)
-        conv3 = self.conv3(pool2)
-        conv4 = self.conv4(conv3)
-        return (F.tanh(conv4) + 1) / 2   #[0, 1]
-
-
-#############################################################################
-# srda model
-#############################################################################
-def feature_encoder(is_restore_from_imagenet=True, resnet_weight_path="./resnetweight/", gpu_ids=[]):
-    model = resnet50_encoder(Bottleneck, [3, 4, 6, 3])
-    if len(gpu_ids) > 0:
-        assert (torch.cuda.is_available())
-        model.to(gpu_ids[0])
-        model = torch.nn.DataParallel(model, gpu_ids)  # multi-GPUs
-    if is_restore_from_imagenet:
-        print("loading pretrained model (resnet50)")
-        state_dict = load_state_dict_from_url(model_urls['resnet50'], model_dir=resnet_weight_path)
-        model.load_state_dict(state_dict, strict=False)
-    return model
-
-def classifier_segment(num_classes=2, gpu_ids=[]):
-    model = classifier(num_classes)
-    if len(gpu_ids) > 0:
-        assert (torch.cuda.is_available())
-        model.to(gpu_ids[0])
-        model = torch.nn.DataParallel(model, gpu_ids)  # multi-GPUs
-    return model
-
-def da_decoder(gpu_ids=[]):
-    model = dadecoder()
-    if len(gpu_ids) > 0:
-        assert (torch.cuda.is_available())
-        model.to(gpu_ids[0])
-        model = torch.nn.DataParallel(model, gpu_ids)  # multi-GPUs
-    return model
-
-class resnet50_encoder(nn.Module):
-    def __init__(self, block, layers, zero_init_residual=False,
-                 groups=1, width_per_group=64, replace_stride_with_dilation=None,
-                 norm_layer=None):
-        super(resnet50_encoder, self).__init__()
-        if norm_layer is None:
-            norm_layer = nn.BatchNorm2d
-        self._norm_layer = norm_layer
-
-        self.inplanes = 64
-        self.dilation = 1
-        if replace_stride_with_dilation is None:
-            # each element in the tuple indicates if we should replace
-            # the 2x2 stride with a dilated convolution instead
-            replace_stride_with_dilation = [False, False, False]
-        if len(replace_stride_with_dilation) != 3:
-            raise ValueError("replace_stride_with_dilation should be None "
-                             "or a 3-element tuple, got {}".format(replace_stride_with_dilation))
-        self.groups = groups
-        self.base_width = width_per_group
-        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
-                               bias=False)
-        self.bn1 = norm_layer(self.inplanes)
-        self.relu = nn.ReLU(inplace=True)
-        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.layer1 = self._make_layer(block, 64, layers[0])
-        self.layer2 = self._make_layer(block, 128, layers[1], stride=2,
-                                       dilate=replace_stride_with_dilation[0])
-        self.layer3 = self._make_layer(block, 256, layers[2], stride=1,
-                                       dilate=replace_stride_with_dilation[1])
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=1,
-                                       dilate=replace_stride_with_dilation[2])
-        #self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        #self.output = conv1x1(512 * block.expansion, num_classes)
-        #self.fc = nn.Linear(512 * block.expansion, num_classes)
-
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-
-        # Zero-initialize the last BN in each residual branch,
-        # so that the residual branch starts with zeros, and each residual block behaves like an identity.
-        # This improves the model by 0.2~0.3% according to https://arxiv.org/abs/1706.02677
-        if zero_init_residual:
-            for m in self.modules():
-                if isinstance(m, Bottleneck):
-                    nn.init.constant_(m.bn3.weight, 0)
-                elif isinstance(m, BasicBlock):
-                    nn.init.constant_(m.bn2.weight, 0)
-
-    def _make_layer(self, block, planes, blocks, stride=1, dilate=False):
-        norm_layer = self._norm_layer
-        downsample = None
-        previous_dilation = self.dilation
-        if dilate:
-            self.dilation *= stride
-            stride = 1
-        if stride != 1 or self.inplanes != planes * block.expansion:
-            downsample = nn.Sequential(
-                conv1x1(self.inplanes, planes * block.expansion, stride),
-                norm_layer(planes * block.expansion),
-            )
-
-        layers = []
-        layers.append(block(self.inplanes, planes, stride, downsample, self.groups,
-                            self.base_width, previous_dilation, norm_layer))
-        self.inplanes = planes * block.expansion
-        for _ in range(1, blocks):
-            layers.append(block(self.inplanes, planes, groups=self.groups,
-                                base_width=self.base_width, dilation=self.dilation,
-                                norm_layer=norm_layer))
-
-        return nn.Sequential(*layers)
-
-    def forward(self, x):
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
-        x = self.maxpool(x)
-
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
-        #x = self.output(x)
-        #x = nn.functional.interpolate(x, scale_factor=8, mode='bilinear')
-        return x   # 下采样8倍
-
-class classifier(nn.Module):
-    def __init__(self, num_classes=2):
-        super(classifier, self).__init__()
-        self.output = conv1x1(512 * 4, num_classes)
-
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-    def forward(self, x):
-        x = self.output(x)
-        x = nn.functional.interpolate(x, scale_factor=8, mode='bilinear')
-        return x
-
-class dadecoder(nn.Module):
-    def __init__(self):
-        super(dadecoder, self).__init__()
-        n_downsampling = 3
-        # 首先降维度
-        self.conv1 = conv1x1(512 * 4, 512)
-        model = []
-        # 添加上采样
-        for i in range(n_downsampling):
-            mult = 2 ** (n_downsampling - i)
-            model += [nn.ConvTranspose2d(64 * mult, int(64 * mult / 2),
-                                         kernel_size=3, stride=2,
-                                         padding=1, output_padding=1,
-                                         bias=True),
-                      nn.BatchNorm2d(int(64 * mult / 2)),
-                      nn.ReLU(True)]
-
-        model += [nn.ReflectionPad2d(3)]
-        model += [nn.Conv2d(64, 3, kernel_size=7, padding=0)]
-        model += [nn.Tanh()]
-        self.upsamples = nn.Sequential(*model)
-
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-    def forward(self, x):
-        x = self.conv1(x)
-        x = self.upsamples(x)
-
-        return x #[-1, 1]

@@ -4,7 +4,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-def cross_entropy2d(input, target, weight=None, size_average=True):
+def cross_entropy2d(input, target, weight_element, size_average=True):
+
+    """
+
+    :param input:  N C H W
+    :param target: N 1 H W
+    :param weight_element:  size(N * H * W)
+    :param weight:
+    :param size_average:
+    :return:
+    """
     n, c, h, w = input.size()
     nt, ct, ht, wt = target.size()
 
@@ -32,9 +42,11 @@ def cross_entropy2d(input, target, weight=None, size_average=True):
     target = target[mask]
     target = target.long()
     loss = F.nll_loss(
-        log_p, target, ignore_index=250, weight=weight, size_average=False)
+        log_p, target, ignore_index=250, weight=None, size_average=False, reduce=False)
+
+    loss = loss * weight_element * 2
     if size_average:
-        loss /= mask.data.sum().float()
+        loss = loss.data.sum().float() / mask.data.sum().float()
     return loss
 
 
@@ -105,3 +117,11 @@ def multi_scale_cross_entropy2d(input,
             input=inp, target=target, weight=weight, size_average=size_average)
     
     return loss
+
+
+if __name__ == "__main__":
+    input = torch.randn(50, 5, 3, 3)
+    target = torch.ones(50, 1, 3, 3)
+    weight_element = torch.zeros(50 * 3 * 3)
+    cross_entropy2d(input, target, weight_element)
+
